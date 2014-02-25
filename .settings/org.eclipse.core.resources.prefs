@@ -1,0 +1,8 @@
+eclipse.preferences.version=1
+encoding/db.py=utf-8
+encoding/dbDisamb.py=utf-8
+encoding/langconv.py=utf-8
+encoding/testJieba.py=utf-8
+encoding/testLSI.py=utf-8
+encoding/testWikiParser.py=utf-8
+encoding/userTags.py=utf-8

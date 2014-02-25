@@ -9,6 +9,7 @@ from stopWords import removeStopWordsJbg
 import jieba.posseg as jbp
 import jieba as jb
 import re, json
+import logging
 
 def getWordsFromWiki(text):
     text = text.lower()
@@ -21,16 +22,22 @@ def getWordsFromWiki(text):
 def isWordWithMaxFlag(flag):
     return flag != 'x'
 
+logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
+
 con = mdb.connect('localhost', 'yumao', 'yumao8899', 'wikidb', charset='utf8');
 cur = con.cursor(mdb.cursors.DictCursor)
+
+cur.execute("SET SESSION wait_timeout = 36000")
+con.commit()
+
 cur.execute("SELECT id FROM Page")
 rows = cur.fetchall()
-len = len(rows)
-print 'total:', len
+length = len(rows)
+print 'total:', length
 
 jb.enable_parallel()
 
-for i in range(1800, len):
+for i in range(0, length):
     row = rows[i]
     cur.execute("SELECT text FROM Page WHERE id = %s", [row['id']])
     page = cur.fetchone()
@@ -40,11 +47,8 @@ for i in range(1800, len):
     if 0 == i % 1000:
         con.commit()
         print 'commit'
-con.commit() 
-# cur.execute("SELECT words FROM Page WHERE id = 397")
-# row = cur.fetchone()
-# print json.loads(row['words'])[2][0] == '世界'
-
+con.commit()
+print 'commit'
    
 cur.close()
 con.close()

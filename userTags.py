@@ -5,13 +5,13 @@ Created on 2014-2-16
 @author: yuzhang
 '''
 
-import urllib2, json, re, os, math
+import urllib2, json, re, os, math, time
 import jieba.posseg as jbp
 import jieba as jb
 import logging
-from bs4 import BeautifulSoup
 from stopWords import removeStopWordsJbg
 import MySQLdb as mdb
+from langconv import Converter
 
 jb.enable_parallel()
 
@@ -20,6 +20,7 @@ logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=lo
 weiboAppKey = '82966982'
 tagsDict = {}
 b = 2
+cvt = Converter('zh-hans')
 
 def setEleInDict(d, e, n):
     if e not in d:
@@ -67,10 +68,10 @@ def collectTags(text):
     for w in words:
         if isWordWithMidFlag(w.flag):
             wordsCon.append(w.word)
-            if w.flag not in ['v', 'a']:
+            if len(w.word) > 1 and w.flag not in ['v', 'a']:
 #                 print w.word, w.flag
                 setEleInDict(wordTimesDict, w.word, 1)
-    wordsConSet = set(wordsCon)
+    wordsSet = set(wordsCon)
                                     
     for (word, times) in wordTimesDict.items():
         cur.execute("SELECT pageID FROM PageMapLine WHERE name LIKE %s ORDER BY id", [word])
@@ -81,44 +82,33 @@ def collectTags(text):
             row1 = cur.fetchone()
             
             if 1 == ord(row1['isDisambiguation']):
-                print u'【歧义词】', pageID, row1['name']
-                # 歧义词候选name有待完善
-                disaText = row1['text'].lower()
-                disaNames = [name.split('|')[0].replace(' ', '_')
-                             for name in 
-                             re.findall(r'\*+[ ]*\[\[(.*?)\]\]', disaText)
-                             + re.findall(ur'参见\[\[(.*?)\]\]', disaText)]
-#                 print '[', ', '.join(disaNames), ']'               
-                cur.execute("SELECT outLinks FROM page_outlinks WHERE id = %s", [pageID])
-                disaWords = {}
-                for ol in cur.fetchall():
-                    cur.execute("SELECT name, text, isDisambiguation FROM Page WHERE id = %s", [ol['outLinks']])
-                    row3 = cur.fetchone()
-                    if 0 == ord(row3['isDisambiguation']) and (row3['name'].lower() in disaNames):
-                        wikiText = row3['text']
-                        wikiWordsConSet = set([w.word for w in getWordsFromWiki(wikiText) if isWordWithMidFlag(w.flag)])       
-                        disaWords[ol['outLinks']] = {
-                                                     'name': row3['name'], 
-                                                     'text': wikiText, 
-                                                     'con': len(wordsConSet.intersection(wikiWordsConSet)), 
-                                                     'sim': 0, 
-                                                     'cat': 0, 
-                                                     'tol': 0
-                                                     }
-                        print ol['outLinks'], row3['name'], disaWords[ol['outLinks']]['con']
-                        
+                print "【歧义词】", pageID, row1['name']
+                disambiguate(pageID, wordsSet)
+                    
             else:
                 cur.execute("SELECT pageID FROM PageMapLine WHERE name LIKE %s ORDER BY id", [word+u'_(消歧义)'])
                 row2 = cur.fetchone()
                 if row2:
-                    continue
+                    print "【歧义词】", row2['pageID'], word+u'_(消歧义)'
+                    disambiguate(row2['pageID'], wordsSet)
                 else:
                     pageName = row1['name']
                     setEleInDict(tagsDict, pageName, times*1.0)
                     
                     cur.execute("SELECT pages AS catID FROM page_categories WHERE id = %s", [pageID])
                     crawlCategories(cur.fetchall(), 2, times, 1)
-            
+
+def disambiguate(disaID, wordsSet):
+    cur.execute("SELECT candidates FROM page_candidates WHERE id = %s", [disaID])
+    rows = cur.fetchall()
+    for row in rows:
+        cand = row['candidates']
+        cur.execute("SELECT name, isDisambiguation, words FROM Page WHERE id = %s", [cand])
+        row1 = cur.fetchone()
+        if 0 == ord(row1['isDisambiguation']):
+            wikiWordsSet = set([w[0] for w in json.loads(row1['words']) if isWordWithMidFlag(w[1])])     
+            print '\t', cand, row1['name'], len(wordsSet.intersection(wikiWordsSet))
+         
                     
 def crawlCategories(rows, levels, times, d):
     if 0 != levels:
@@ -140,19 +130,22 @@ def crawlCategories(rows, levels, times, d):
                 crawlCategories(cur.fetchall(), levels-1, times, d+1)
     
  
-res = urllib2.urlopen('https://api.weibo.com/2/statuses/user_timeline.json?source=' + weiboAppKey + '&uid=1631499041&count=20&trim_user=1')
-data = json.loads(res.read())
+res = urllib2.urlopen('https://api.weibo.com/2/statuses/user_timeline.json?source=' + weiboAppKey + '&uid=1631499041&count=50&trim_user=1')
+data = json.loads(cvt.convert(res.read().decode('utf-8')).encode('utf-8'))
 statuses = data['statuses']
 
 con = mdb.connect('localhost', 'yumao', 'yumao8899', 'wikidb', charset='utf8');
 cur = con.cursor(mdb.cursors.DictCursor)
 
-# for status in [statuses[3]]:
-for status in statuses:
+start = time.clock()
+for i in range(0, len(statuses)):
+    status = statuses[i]
     text = ' '.join([status['text'], status['retweeted_status']['text']]) if status.has_key('retweeted_status') else status['text']
-    print text
+    print '(' + str(i) + ')', text
     collectTags(text)
-    
+    print
+print 'Timeout:', time.clock() - start
+
 cur.close()
 con.close()
 
