@@ -51,8 +51,10 @@ for i in range(0, l):
         if row1:
             disaIDs.append(row1['pageID'])
     disaIDs = list(set(disaIDs))
-    for dID in disaIDs:
-        res = cur.execute("INSERT INTO page_candidates VALUES (%s, %s)", [ident, dID])
+#     for dID in disaIDs:
+#         res = cur.execute("INSERT INTO page_candidates VALUES (%s, %s)", [ident, dID])
+    cur.execute("INSERT INTO page_candidates2 VALUES (%s, %s)", [ident, json.dumps(disaIDs)])
+        
 
 f.close()
 
